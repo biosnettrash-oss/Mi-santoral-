@@ -1,9 +1,7 @@
 import os
 import urllib.request
-import urllib.parse
 from bs4 import BeautifulSoup
 
-# Canal de ntfy
 TOPIC_NTFY = os.environ.get("TOPIC_NTFY", "santoral-diario-2026")
 URL_WEB = "https://www.ecampmany.com/cgi-bin/calendari.cgi"
 
@@ -14,21 +12,30 @@ def obtener_santo():
             headers={'User-Agent': 'Mozilla/5.0'}
         )
         with urllib.request.urlopen(req, timeout=15) as response:
-            html = response.read().decode('iso-8859-1', errors='ignore')
+            # Leemos los datos en bytes
+            raw_data = response.read()
+            # La web ecampmany usa iso-8859-1 (latin1)
+            html = raw_data.decode('iso-8859-1', errors='ignore')
         
         soup = BeautifulSoup(html, 'html.parser')
-        texto_pagina = soup.get_text()
         
-        lineas = [line.strip() for line in texto_pagina.split('\n') if line.strip()]
-        mensaje = "\n".join(lineas[:6])
-        return mensaje if mensaje else "No se pudo extraer el santoral de hoy."
+        # Filtramos todas las líneas de texto no vacías
+        lineas = [line.strip() for line in soup.get_text().split('\n') if line.strip()]
+        
+        # Buscamos dónde aparecen las líneas con la fecha/día y nos quedamos con las líneas siguientes (que contienen el santoral)
+        # Cogemos desde la línea 5 hasta la 20 para asegurarnos de capturar los santos
+         lineas_santo = lineas[5:22]
+        
+        mensaje = "\n".join(lineas_santo)
+        return mensaje if mensaje else "No se pudo extraer el santoral."
     except Exception as e:
         return f"Error al conectar con la web: {e}"
 
 def enviar_push(mensaje):
     url_ntfy = f"https://ntfy.sh/{TOPIC_NTFY}"
-    cuerpo = f"Santoral de hoy:\n\n{mensaje}"
+    cuerpo = f"📅 Santoral de hoy:\n\n{mensaje}"
     
+    # Enviamos en UTF-8 para que los acentos y caracteres catalanes se vean perfectos
     datos = cuerpo.encode('utf-8')
     
     req = urllib.request.Request(
