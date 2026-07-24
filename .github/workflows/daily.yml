@@ -1,0 +1,29 @@
+name: Enviar Santoral Push
+
+on:
+  schedule:
+    # 06:00 UTC equivale a las 8:00 AM en horario de verano en España (07:00 AM en invierno)
+    - cron: '0 6 * * *'
+  workflow_dispatch:
+
+jobs:
+  run-script:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Descargar repositorio
+        uses: actions/checkout@v4
+
+      - name: Configurar Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.x'
+
+      - name: Instalar dependencias
+        run: pip install -r requirements.txt
+
+      - name: Ejecutar script
+        env:
+          # Si en tu app ntfy pusiste un nombre diferente a santoral-diario-2026, cámbialo aquí también:
+          TOPIC_NTFY: 'santoral-diario-2026'
+        run: python bot.py
+        
