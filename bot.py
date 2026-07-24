@@ -1,5 +1,6 @@
 import os
-import requests
+import urllib.request
+import urllib.parse
 from bs4 import BeautifulSoup
 
 # Canal de ntfy
@@ -8,11 +9,14 @@ URL_WEB = "https://www.ecampmany.com/cgi-bin/calendari.cgi"
 
 def obtener_santo():
     try:
-        headers = {'User-Agent': 'Mozilla/5.0'}
-        response = requests.get(URL_WEB, headers=headers, timeout=15)
-        response.encoding = 'iso-8859-1'
+        req = urllib.request.Request(
+            URL_WEB, 
+            headers={'User-Agent': 'Mozilla/5.0'}
+        )
+        with urllib.request.urlopen(req, timeout=15) as response:
+            html = response.read().decode('iso-8859-1', errors='ignore')
         
-        soup = BeautifulSoup(response.text, 'html.parser')
+        soup = BeautifulSoup(html, 'html.parser')
         texto_pagina = soup.get_text()
         
         lineas = [line.strip() for line in texto_pagina.split('\n') if line.strip()]
@@ -23,16 +27,26 @@ def obtener_santo():
 
 def enviar_push(mensaje):
     url_ntfy = f"https://ntfy.sh/{TOPIC_NTFY}"
+    cuerpo = f"Santoral de hoy:\n\n{mensaje}"
     
-    # Construimos todo el cuerpo del mensaje (título + contenido)
-    cuerpo_mensaje = f"📅 Santoral de hoy:\n\n{mensaje}"
+    datos = cuerpo.encode('utf-8')
     
-    # Hacemos la petición POST sin cabeceras complejas para evitar fallos de codificacion
-    requests.post(
+    req = urllib.request.Request(
         url_ntfy,
-        data=cuerpo_mensaje.encode('utf-8')
+        data=datos,
+        headers={
+            "Title": "Santoral de Hoy"
+        },
+        method='POST'
     )
+    
+    try:
+        with urllib.request.urlopen(req) as response:
+            pass
+    except Exception as e:
+        print(f"Error al enviar push: {e}")
 
 if __name__ == "__main__":
     santo = obtener_santo()
     enviar_push(santo)
+    
