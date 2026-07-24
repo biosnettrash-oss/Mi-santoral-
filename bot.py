@@ -12,9 +12,7 @@ def obtener_santo():
             headers={'User-Agent': 'Mozilla/5.0'}
         )
         with urllib.request.urlopen(req, timeout=15) as response:
-            # Leemos los datos en bytes
             raw_data = response.read()
-            # La web ecampmany usa iso-8859-1 (latin1)
             html = raw_data.decode('iso-8859-1', errors='ignore')
         
         soup = BeautifulSoup(html, 'html.parser')
@@ -22,9 +20,8 @@ def obtener_santo():
         # Filtramos todas las líneas de texto no vacías
         lineas = [line.strip() for line in soup.get_text().split('\n') if line.strip()]
         
-        # Buscamos dónde aparecen las líneas con la fecha/día y nos quedamos con las líneas siguientes (que contienen el santoral)
-        # Cogemos desde la línea 5 hasta la 20 para asegurarnos de capturar los santos
-         lineas_santo = lineas[5:22]
+        # Cogemos las líneas donde está la información del santoral
+        lineas_santo = lineas[5:22]
         
         mensaje = "\n".join(lineas_santo)
         return mensaje if mensaje else "No se pudo extraer el santoral."
@@ -35,7 +32,6 @@ def enviar_push(mensaje):
     url_ntfy = f"https://ntfy.sh/{TOPIC_NTFY}"
     cuerpo = f"📅 Santoral de hoy:\n\n{mensaje}"
     
-    # Enviamos en UTF-8 para que los acentos y caracteres catalanes se vean perfectos
     datos = cuerpo.encode('utf-8')
     
     req = urllib.request.Request(
