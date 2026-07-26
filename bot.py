@@ -14,51 +14,55 @@ def obtener_santoral():
     response.encoding = 'utf-8'
     
     soup = BeautifulSoup(response.text, "html.parser")
-    texto_completo = soup.get_text()
     
-    # Cortamos antes del menú
-    if "Passatemps" in texto_completo:
-        texto_completo = texto_completo.split("Passatemps")[0]
-        
-    lineas = [linea.strip() for linea in texto_completo.splitlines() if linea.strip()]
+    # Extraemos el texto
+    texto = soup.get_text()
     
-    texto_limpio = []
-    for linea in lineas:
-        if any(palabra in linea.lower() for palabra in ["sant", "santa", "sants", "santes", "sol:", "lluna:"]):
-            texto_limpio.append(linea)
+    # Cortamos a partir de Passatemps o Menú para eliminar la basura final
+    for palabra_corte in ["Passatemps", "Videojocs", "Inici"]:
+        if palabra_corte in texto:
+            texto = texto.split(palabra_corte)[0]
             
-    resultado = "\n".join(texto_limpio) if texto_limpio else "Santoral d'avui"
-    return resultado
+    # Limpiamos líneas vacías repetidas
+    lineas = [linea.strip() for linea in texto.splitlines() if linea.strip()]
+    
+    # Arreglamos caracteres extraños comunes de la web si aparecieran
+    texto_final = "\n".join(lineas)
+    texto_final = texto_final.replace("Â·", "•").replace("Â", "")
+    
+    return texto_final if texto_final else "Santoral d'avui"
 
 def enviar_notificacion():
     santoral = obtener_santoral()
     
-    # Extraemos el santo para la imagen
-    santo_principal = "Santoral"
-    match = re.search(r'(Sant[a-z]*\s+[A-ZÀ-Úa-zà-ú]+)', santoral, re.IGNORECASE)
-    if match:
-        santo_principal = match.group(1)
-
-    # Prompt para Pollinations.ai
-    prompt_ia = f"Catholic saint illustration of {santo_principal}, holy art style, detailed, vintage painting"
-    prompt_encoded = urllib.parse.quote(prompt_ia)
+    # Buscamos el nombre del primer santo (ej: "Sant Joaquim", "Santa Anna")
+    santo_match = re.search(r'(Sant[a-z]*\s+[A-ZÀ-Úa-zà-ú]+)', santoral, re.IGNORECASE)
     
-    url_imagen = f"https://pollinations.ai/prompt/{prompt_encoded}?width=800&height=600&seed=42&nologo=true"
+    if santo_match:
+        nombre_santo = santo_match.group(1)
+    else:
+        nombre_santo = "Saint"
+
+    # Generamos la imagen con Pollinations
+    prompt = f"Catholic saint painting of {nombre_santo}, holy icon art style"
+    prompt_encoded = urllib.parse.quote(prompt)
+    url_imagen = f"https://image.pollinations.ai/prompt/{prompt_encoded}?width=800&height=600&nologo=true"
     
     topic = os.getenv("TOPIC_NTFY", "santoral-diario-2026")
     url_ntfy = f"https://ntfy.sh/{topic}"
     
-    # Cabeceras sin emojis para evitar errores de codificación latin-1
     headers = {
         "Title": "Santoral d'Avui",
         "Attach": url_imagen,
         "Tags": "calendar,church"
     }
     
+    # Enviamos el mensaje en UTF-8
     requests.post(url_ntfy, data=santoral.encode('utf-8'), headers=headers)
 
 if __name__ == "__main__":
     enviar_notificacion()
+    
     
     
     
