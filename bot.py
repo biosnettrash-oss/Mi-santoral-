@@ -2,66 +2,75 @@ import os
 import re
 import urllib.parse
 import requests
-from bs4 import BeautifulSoup
 from datetime import datetime
 
-# Traducción de meses al catalán para construir la URL de Wikipedia
 MESES_CA = {
     1: "gener", 2: "febrer", 3: "març", 4: "abril",
     5: "maig", 6: "juny", 7: "juliol", 8: "agost",
     9: "setembre", 10: "octubre", 11: "novembre", 12: "desembre"
 }
 
-def obtener_santoral_wikipedia():
+def obtener_santoral_wikipedia_api():
     ahora = datetime.now()
     dia = ahora.day
     mes_nombre = MESES_CA[ahora.month]
     
-    # URL de Wikipedia del día (ej: https://ca.wikipedia.org/wiki/27_de_juliol)
-    url = f"https://ca.wikipedia.org/wiki/{dia}_de_{mes_nombre}"
+    # Usamos la API oficial de MediaWiki para obtener el wikitexto puro
+    page_title = f"{dia}_de_{mes_nombre}"
+    api_url = "https://ca.wikipedia.org/w/api.php"
+    
+    params = {
+        "action": "parse",
+        "page": page_title,
+        "prop": "wikitext",
+        "format": "json"
+    }
+    
     headers = {
-        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) SantoralBot/1.0"
+        "User-Agent": "SantoralBot/1.0 (https://github.com/biosnettrash-oss)"
     }
     
     try:
-        response = requests.get(url, headers=headers, timeout=10)
-        soup = BeautifulSoup(response.text, "html.parser")
+        res = requests.get(api_url, params=params, headers=headers, timeout=10)
+        data = res.json()
+        wikitext = data.get("parse", {}).get("wikitext", {}).get("*", "")
         
-        # Buscamos la sección de Santoral en Wikipedia
+        # Buscamos la sección de Festes / Commemoracions / Santoral
+        seccion_match = re.search(r'==\s*(?:Festes|Commemoracions|Santoral).*?==\n(.*?)(?=\n==|\Z)', wikitext, re.DOTALL | re.IGNORECASE)
+        
         santos = []
-        encabezado = soup.find(lambda tag: tag.name in ['h2', 'h3'] and 'Santoral' in tag.text)
-        
-        if encabezado:
-            # Extraemos los elementos de lista (<li>) que le siguen
-            siguiente = encabezado.find_next_sibling()
-            while siguiente and siguiente.name not in ['h2', 'h3']:
-                if siguiente.name in ['ul', 'ol']:
-                    for li in siguiente.find_all('li'):
-                        texto_li = li.get_text().strip()
-                        # Limpiamos notas entre corchetes tipo [1]
-                        texto_li = re.sub(r'\[\d+\]', '', texto_li)
-                        if texto_li:
-                            santos.append(texto_li)
-                siguiente = siguiente.find_next_sibling()
-                
+        if seccion_match:
+            bloque = seccion_match.group(1)
+            # Extraemos las líneas con viñetas (*)
+            for linea in bloque.splitlines():
+                if linea.startswith("*"):
+                    # Limpiamos el formato de enlaces de Wikipedia [[Texto|Nombre]] -> Nombre
+                    texto_limpio = re.sub(r'\[\[(?:[^|\]]*\|)?([^\]]+)\]\]', r'\1', linea)
+                    # Limpiamos plantillas tipo {{...}}, comillas o formatos extras
+                    texto_limpio = re.sub(r'\{\{[^}]+\}\}', '', texto_limpio)
+                    texto_limpio = texto_limpio.replace('*', '').replace("'''", "").replace("''", "").strip()
+                    
+                    if texto_limpio and any(k in texto_limpio.lower() for k in ["sant", "santa", "sants", "santes", "festa", "mare de déu"]):
+                        santos.append(texto_limpio)
+                        
         if santos:
-            # Cogemos hasta los 4 santos principales para no saturar la notificación
-            lista_santos = "\n• " + "\n• ".join(santos[:4])
-            return f"Santoral del {dia} de {mes_nombre}:{lista_santos}"
+            # Seleccionamos hasta 4 santos principales para mantenerlo conciso
+            santos_formateados = "\n• " + "\n• ".join(santos[:4])
+            return f"Santoral del {dia} de {mes_nombre}:{santos_formateados}"
             
     except Exception as e:
-        print(f"Error al consultar Wikipedia: {e}")
+        print(f"Error cargando API de Wikipedia: {e}")
         
     return f"Santoral d'avui ({dia}/{ahora.month})"
 
 def enviar_notificacion():
-    texto_santoral = obtener_santoral_wikipedia()
+    texto_santoral = obtener_santoral_wikipedia_api()
     
-    # Extraemos el primer santo de la lista para enviarlo como prompt a la IA
+    # Extraemos el primer nombre de santo para generar la imagen
     match = re.search(r'(Sant[a-z]*\s+[A-ZÀ-Úa-zà-ú]+)', texto_santoral, re.IGNORECASE)
     nombre_santo = match.group(1) if match else f"Saint of day {datetime.now().day}"
 
-    # Semilla única según el día
+    # Semilla única para cambiar imagen a diario
     seed_dia = datetime.now().strftime("%Y%m%d")
     prompt = f"Classical Catholic icon painting of {nombre_santo}, holy icon art style, detailed"
     prompt_encoded = urllib.parse.quote(prompt)
